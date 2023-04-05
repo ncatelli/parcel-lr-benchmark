@@ -202,7 +202,7 @@ fn parse_basic_expression(c: &mut Criterion) {
 
     let expected = Ok(expected);
 
-    c.bench_function("simple_calculator_expr_parsing", |b| {
+    c.bench_function("simple calculator expression parsing", |b| {
         b.iter(|| {
             let tokenizer = token_stream_from_input(black_box(input))
                 .unwrap()
@@ -217,5 +217,27 @@ fn parse_basic_expression(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, parse_basic_expression,);
+fn parse_large_expression(c: &mut Criterion) {
+    let input = ["10"]
+        .into_iter()
+        .chain(["/ 5", "+ 1", "- 2", "* 6"].into_iter().cycle())
+        .take(100)
+        .collect::<String>();
+
+    c.bench_function("large expression", |b| {
+        b.iter(|| {
+            let tokenizer = token_stream_from_input(black_box(&input))
+                .unwrap()
+                .map(|token| token.to_variant())
+                .take_while(|terminal| !matches!(&terminal, &Terminal::Eof))
+                // append a single eof.
+                .chain([Terminal::Eof].into_iter());
+
+            let parse_tree = lr_parse_input(tokenizer);
+            assert!(parse_tree.is_ok());
+        });
+    });
+}
+
+criterion_group!(benches, parse_basic_expression, parse_large_expression);
 criterion_main!(benches);

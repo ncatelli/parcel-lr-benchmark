@@ -168,7 +168,7 @@ fn parse_basic_expression(c: &mut Criterion) {
 
     let expected = Ok(expected);
 
-    c.bench_function("simple_calculator_expr_parsing", |b| {
+    c.bench_function("simple calculator expression parsing", |b| {
         b.iter(|| {
             let parse_tree = expression().parse(black_box(&input)).map(|ms| ms.unwrap());
 
@@ -177,5 +177,23 @@ fn parse_basic_expression(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, parse_basic_expression);
+fn parse_large_expression(c: &mut Criterion) {
+    let input: Vec<(usize, char)> = ["10"]
+        .into_iter()
+        .chain(["/ 5", "+ 1", "- 2", "* 6"].into_iter().cycle())
+        .take(100)
+        .collect::<String>()
+        .char_indices()
+        .collect();
+
+    c.bench_function("large expression parsing", |b| {
+        b.iter(|| {
+            let parse_tree = expression().parse(black_box(&input)).map(|ms| ms.unwrap());
+
+            assert!(parse_tree.is_ok())
+        });
+    });
+}
+
+criterion_group!(benches, parse_basic_expression, parse_large_expression);
 criterion_main!(benches);
