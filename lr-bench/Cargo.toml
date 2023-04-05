@@ -7,6 +7,10 @@ workspace = ".."
 [dev-dependencies]
 criterion = "0.4.0"
 
+[[bench]]
+name = "lr_calculator_expr"
+harness = false
+
 [dependencies]
 regex-runtime = { git = "https://github.com/ncatelli/regex", branch = "main" }
 relex-derive = { git = "https://github.com/ncatelli/relex", branch = "main" }
