@@ -1,0 +1,14 @@
+[package]
+name = "lr-bench"
+version = "0.1.0"
+edition = "2021"
+workspace = ".."
+
+[dev-dependencies]
+criterion = "0.4.0"
+
+[dependencies]
+regex-runtime = { git = "https://github.com/ncatelli/regex", branch = "main" }
+relex-derive = { git = "https://github.com/ncatelli/relex", branch = "main" }
+lr-core = { git = "https://github.com/ncatelli/lr", branch = "main" }
+lr-derive = { git = "https://github.com/ncatelli/lr", branch = "main" }
