@@ -1,0 +1,2 @@
+[workspace]
+members = ["lr-bench", "parcel-bench"]
