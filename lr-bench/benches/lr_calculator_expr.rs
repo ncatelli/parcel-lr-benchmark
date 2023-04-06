@@ -182,6 +182,7 @@ pub enum NonTerminal {
 }
 
 fn parse_basic_expression(c: &mut Criterion) {
+    let mut group = c.benchmark_group("simple calculator expression parsing");
     let input = "10 / 5 + 1";
 
     let expected = NonTerminal::Expr(Box::new(NonTerminal::Additive(Box::new(
@@ -202,7 +203,7 @@ fn parse_basic_expression(c: &mut Criterion) {
 
     let expected = Ok(expected);
 
-    c.bench_function("simple calculator expression parsing", |b| {
+    group.bench_function("with tokenization", |b| {
         b.iter(|| {
             let tokenizer = token_stream_from_input(black_box(input))
                 .unwrap()
@@ -215,16 +216,33 @@ fn parse_basic_expression(c: &mut Criterion) {
             assert_eq!(&parse_tree, &expected);
         });
     });
+
+    group.bench_function("without tokenization", |b| {
+        let tokenizer = token_stream_from_input(black_box(&input))
+            .unwrap()
+            .map(|token| token.to_variant())
+            .take_while(|terminal| !matches!(&terminal, &Terminal::Eof))
+            // append a single eof.
+            .chain([Terminal::Eof].into_iter());
+
+        let mut token_stream = tokenizer.collect::<Vec<_>>().into_iter().cycle();
+
+        b.iter(|| {
+            let parse_tree = lr_parse_input(&mut token_stream);
+            assert_eq!(&parse_tree, &expected);
+        });
+    });
 }
 
 fn parse_large_expression(c: &mut Criterion) {
+    let mut group = c.benchmark_group("large expression");
     let input = ["10"]
         .into_iter()
         .chain(["/ 5", "+ 1", "- 2", "* 6"].into_iter().cycle())
         .take(100)
         .collect::<String>();
 
-    c.bench_function("large expression", |b| {
+    group.bench_function("with tokenization", |b| {
         b.iter(|| {
             let tokenizer = token_stream_from_input(black_box(&input))
                 .unwrap()
@@ -234,6 +252,22 @@ fn parse_large_expression(c: &mut Criterion) {
                 .chain([Terminal::Eof].into_iter());
 
             let parse_tree = lr_parse_input(tokenizer);
+            assert!(parse_tree.is_ok());
+        });
+    });
+
+    group.bench_function("without tokenization", |b| {
+        let tokenizer = token_stream_from_input(black_box(&input))
+            .unwrap()
+            .map(|token| token.to_variant())
+            .take_while(|terminal| !matches!(&terminal, &Terminal::Eof))
+            // append a single eof.
+            .chain([Terminal::Eof].into_iter());
+
+        let mut token_stream = tokenizer.collect::<Vec<_>>().into_iter().cycle();
+
+        b.iter(|| {
+            let parse_tree = lr_parse_input(&mut token_stream);
             assert!(parse_tree.is_ok());
         });
     });
