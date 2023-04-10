@@ -1,2 +1,5 @@
 [workspace]
 members = ["lr-bench", "parcel-bench"]
+
+[profile.bench]
+lto = true
