@@ -3,7 +3,7 @@ use lr_core::{TerminalOrNonTerminal, TerminalRepresentable};
 pub use lr_derive::Lr1;
 pub use relex_derive::{Relex, VariantKind};
 
-#[derive(VariantKind, Relex, Debug, Clone, PartialEq, Eq)]
+#[derive(VariantKind, Relex, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Terminal {
     #[matches(r"+")]
     Plus,
@@ -225,10 +225,10 @@ fn parse_basic_expression(c: &mut Criterion) {
             // append a single eof.
             .chain([Terminal::Eof].into_iter());
 
-        let mut token_stream = tokenizer.collect::<Vec<_>>().into_iter().cycle();
+        let token_stream = tokenizer.collect::<Vec<_>>();
 
         b.iter(|| {
-            let parse_tree = lr_parse_input(&mut token_stream);
+            let parse_tree = lr_parse_input((&token_stream).iter().copied());
             assert_eq!(&parse_tree, &expected);
         });
     });
@@ -264,10 +264,10 @@ fn parse_large_expression(c: &mut Criterion) {
             // append a single eof.
             .chain([Terminal::Eof].into_iter());
 
-        let mut token_stream = tokenizer.collect::<Vec<_>>().into_iter().cycle();
+        let token_stream = tokenizer.collect::<Vec<_>>();
 
         b.iter(|| {
-            let parse_tree = lr_parse_input(&mut token_stream);
+            let parse_tree = lr_parse_input((&token_stream).iter().copied());
             assert!(parse_tree.is_ok());
         });
     });
