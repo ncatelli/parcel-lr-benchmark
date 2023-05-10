@@ -8,7 +8,7 @@ workspace = ".."
 criterion = "0.4"
 
 [[bench]]
-name = "lr_calculator_expr"
+name = "lr_calculator_expr_tree"
 harness = false
 
 [dependencies]

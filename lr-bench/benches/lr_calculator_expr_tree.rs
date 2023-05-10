@@ -1,5 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use lr_core::{NonTerminalRepresentable, TerminalOrNonTerminal, TerminalRepresentable};
+use lr_core::prelude::v1::*;
+use lr_core::TerminalOrNonTerminal;
 pub use lr_derive::Lr1;
 pub use relex_derive::{Relex, VariantKind};
 
@@ -95,34 +96,58 @@ fn reduce_primary(elems: &mut Vec<TermOrNonTerm>) -> Result<NonTerminal, String>
 }
 
 #[allow(unused)]
-fn reduce_expr_unary(elems: &mut Vec<TermOrNonTerm>) -> Result<NonTerminal, String> {
+fn reduce_expr_unary(
+    production_id: usize,
+    elems: &mut Vec<TermOrNonTerm>,
+) -> Result<NonTerminal, String> {
     // the only top level expr is an additive expr.
     if let Some(TermOrNonTerm::NonTerminal(NonTerminal::Additive(inner))) = elems.pop() {
         Ok(NonTerminal::Expr(inner))
     } else {
-        Err("expected non-terminal at top of stack in production 3 reducer.".to_string())
+        let err_msg = format!(
+            "expected non-terminal at top of stack in production {} reducer.",
+            production_id
+        );
+
+        Err(err_msg)
     }
 }
 
 #[allow(unused)]
-fn reduce_multiplicative_unary(elems: &mut Vec<TermOrNonTerm>) -> Result<NonTerminal, String> {
+fn reduce_multiplicative_unary(
+    production_id: usize,
+    elems: &mut Vec<TermOrNonTerm>,
+) -> Result<NonTerminal, String> {
     if let Some(TermOrNonTerm::NonTerminal(nonterm)) = elems.pop() {
         let inner = ExprInner::Unary(UnaryExpr::new(nonterm));
 
         Ok(NonTerminal::Multiplicative(Box::new(inner)))
     } else {
-        Err("expected non-terminal at top of stack in production 3 reducer.".to_string())
+        let err_msg = format!(
+            "expected non-terminal at top of stack in production {} reducer.",
+            production_id
+        );
+
+        Err(err_msg)
     }
 }
 
 #[allow(unused)]
-fn reduce_additive_unary(elems: &mut Vec<TermOrNonTerm>) -> Result<NonTerminal, String> {
+fn reduce_additive_unary(
+    production_id: usize,
+    elems: &mut Vec<TermOrNonTerm>,
+) -> Result<NonTerminal, String> {
     if let Some(TermOrNonTerm::NonTerminal(nonterm)) = elems.pop() {
         let inner = ExprInner::Unary(UnaryExpr::new(nonterm));
 
         Ok(NonTerminal::Additive(Box::new(inner)))
     } else {
-        Err("expected non-terminal at top of stack in production 3 reducer.".to_string())
+        let err_msg = format!(
+            "expected non-terminal at top of stack in production {} reducer.",
+            production_id
+        );
+
+        Err(err_msg)
     }
 }
 
@@ -151,15 +176,20 @@ fn reduce_multiplicative_binary(
 
         Ok(NonTerminal::Multiplicative(Box::new(inner)))
     } else {
-        Err(format!(
+        let err_msg = format!(
             "expected 3 elements at top of stack in production {} reducer.",
             production_id
-        ))
+        );
+
+        Err(err_msg)
     }
 }
 
 #[allow(unused)]
-fn reduce_additive_binary(elems: &mut Vec<TermOrNonTerm>) -> Result<NonTerminal, String> {
+fn reduce_additive_binary(
+    production_id: usize,
+    elems: &mut Vec<TermOrNonTerm>,
+) -> Result<NonTerminal, String> {
     let optional_rhs = elems.pop();
     let optional_term = elems.pop();
     let optional_lhs = elems.pop();
@@ -180,23 +210,36 @@ fn reduce_additive_binary(elems: &mut Vec<TermOrNonTerm>) -> Result<NonTerminal,
 
         Ok(NonTerminal::Additive(Box::new(inner)))
     } else {
-        let err_msg = format!("expected 3 elements at top of stack in production  reducer.",);
+        let err_msg = format!(
+            "expected 3 elements at top of stack in production {} reducer.",
+            production_id
+        );
+
         Err(err_msg)
+    }
+}
+
+#[allow(unused)]
+fn reduce_goal(elems: &mut Vec<TermOrNonTerm>) -> Result<NonTerminal, String> {
+    if let Some(TermOrNonTerm::NonTerminal(NonTerminal::Expr(inner))) = elems.pop() {
+        Ok(NonTerminal::Expr(inner))
+    } else {
+        Err(format!("expected Expr non-terminal at top of stack.",))
     }
 }
 
 #[derive(Debug, Lr1, PartialEq)]
 pub enum NonTerminal {
-    #[goal(r"<Expr>", reduce_expr_unary)]
-    #[production(r"<Additive>", reduce_expr_unary)]
+    #[goal(r"<Expr>", reduce_goal)]
+    #[production(r"<Additive>", |elems| reduce_expr_unary(2, elems))]
     Expr(Box<ExprInner>),
-    #[production(r"<Additive> Terminal::Plus <Multiplicative>", reduce_additive_binary)]
-    #[production(r"<Additive> Terminal::Minus <Multiplicative>", reduce_additive_binary)]
-    #[production(r"<Multiplicative>", reduce_additive_unary)]
+    #[production(r"<Additive> Terminal::Plus <Multiplicative>", |elems| reduce_additive_binary(3, elems))]
+    #[production(r"<Additive> Terminal::Minus <Multiplicative>", |elems| reduce_additive_binary(4, elems))]
+    #[production(r"<Multiplicative>", |elems| reduce_additive_unary(5, elems))]
     Additive(Box<ExprInner>),
     #[production(r"<Multiplicative> Terminal::Star <Primary>", |elems| { reduce_multiplicative_binary(6, elems) })]
     #[production(r"<Multiplicative> Terminal::Slash <Primary>", |elems| { reduce_multiplicative_binary(7, elems) })]
-    #[production(r"<Primary>", reduce_multiplicative_unary)]
+    #[production(r"<Primary>", |elems| reduce_multiplicative_unary(8, elems))]
     Multiplicative(Box<ExprInner>),
     #[production(r"Terminal::Int", reduce_primary)]
     Primary(Terminal),
@@ -237,7 +280,7 @@ fn parse_basic_expression(c: &mut Criterion) {
                 // append a single eof.
                 .chain([Terminal::Eof].into_iter());
 
-            let parse_tree = lr_parse_input(tokenizer);
+            let parse_tree = LrParseable::parse_input(tokenizer);
             assert_eq!(&parse_tree, &expected);
         });
     });
@@ -253,7 +296,7 @@ fn parse_basic_expression(c: &mut Criterion) {
         let token_stream = tokenizer.collect::<Vec<_>>();
 
         b.iter(|| {
-            let parse_tree = lr_parse_input((&token_stream).iter().copied());
+            let parse_tree = LrParseable::parse_input((&token_stream).iter().copied());
             assert_eq!(&parse_tree, &expected);
         });
     });
@@ -276,7 +319,7 @@ fn parse_large_expression(c: &mut Criterion) {
                 // append a single eof.
                 .chain([Terminal::Eof].into_iter());
 
-            let parse_tree = lr_parse_input(tokenizer);
+            let parse_tree = NonTerminal::parse_input(tokenizer);
             assert!(parse_tree.is_ok());
         });
     });
@@ -292,7 +335,7 @@ fn parse_large_expression(c: &mut Criterion) {
         let token_stream = tokenizer.collect::<Vec<_>>();
 
         b.iter(|| {
-            let parse_tree = lr_parse_input((&token_stream).iter().copied());
+            let parse_tree = NonTerminal::parse_input((&token_stream).iter().copied());
             assert!(parse_tree.is_ok());
         });
     });
