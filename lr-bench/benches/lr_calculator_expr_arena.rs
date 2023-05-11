@@ -54,31 +54,31 @@ pub enum BinaryOperator {
     Slash,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BinaryExpr {
-    pub lhs: NonTerminal,
+    pub lhs: NodeRef,
     pub operator: BinaryOperator,
-    pub rhs: NonTerminal,
+    pub rhs: NodeRef,
 }
 
 impl BinaryExpr {
-    pub fn new(lhs: NonTerminal, operator: BinaryOperator, rhs: NonTerminal) -> Self {
+    pub fn new(lhs: NodeRef, operator: BinaryOperator, rhs: NodeRef) -> Self {
         Self { lhs, operator, rhs }
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnaryExpr {
-    pub lhs: NonTerminal,
+    pub lhs: NodeRef,
 }
 
 impl UnaryExpr {
-    pub fn new(lhs: NonTerminal) -> Self {
+    pub fn new(lhs: NodeRef) -> Self {
         Self { lhs }
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExprInner {
     Unary(UnaryExpr),
     Binary(BinaryExpr),
@@ -87,41 +87,32 @@ pub enum ExprInner {
 type TermOrNonTerm = TerminalOrNonTerminal<Terminal, NonTerminal>;
 
 #[allow(unused)]
-fn reduce_primary(elems: &mut Vec<TermOrNonTerm>) -> Result<NonTerminal, String> {
+fn reduce_primary(
+    state: &mut State,
+    elems: &mut Vec<TermOrNonTerm>,
+) -> Result<NonTerminal, String> {
     if let Some(TermOrNonTerm::Terminal(term)) = elems.pop() {
-        Ok(NonTerminal::Primary(term))
+        let node = ParseTreeNode::Primary(term);
+        let nt_ref = state.add_node_mut(node);
+
+        Ok(NonTerminal::Primary(nt_ref))
     } else {
         Err("expected terminal at top of stack in reducer.".to_string())
     }
 }
 
 #[allow(unused)]
-fn reduce_expr_unary(
-    production_id: usize,
-    elems: &mut Vec<TermOrNonTerm>,
-) -> Result<NonTerminal, String> {
-    // the only top level expr is an additive expr.
-    if let Some(TermOrNonTerm::NonTerminal(NonTerminal::Additive(inner))) = elems.pop() {
-        Ok(NonTerminal::Expr(inner))
-    } else {
-        let err_msg = format!(
-            "expected non-terminal at top of stack in production {} reducer.",
-            production_id
-        );
-
-        Err(err_msg)
-    }
-}
-
-#[allow(unused)]
 fn reduce_multiplicative_unary(
     production_id: usize,
+    state: &mut State,
     elems: &mut Vec<TermOrNonTerm>,
 ) -> Result<NonTerminal, String> {
-    if let Some(TermOrNonTerm::NonTerminal(nonterm)) = elems.pop() {
-        let inner = ExprInner::Unary(UnaryExpr::new(nonterm));
+    if let Some(TermOrNonTerm::NonTerminal(NonTerminal::Primary(nt_ref))) = elems.pop() {
+        let inner = ExprInner::Unary(UnaryExpr::new(nt_ref));
+        let node = ParseTreeNode::Multiplicative(inner);
+        let nt_ref = state.add_node_mut(node);
 
-        Ok(NonTerminal::Multiplicative(Box::new(inner)))
+        Ok(NonTerminal::Multiplicative(nt_ref))
     } else {
         let err_msg = format!(
             "expected non-terminal at top of stack in production {} reducer.",
@@ -135,12 +126,15 @@ fn reduce_multiplicative_unary(
 #[allow(unused)]
 fn reduce_additive_unary(
     production_id: usize,
+    state: &mut State,
     elems: &mut Vec<TermOrNonTerm>,
 ) -> Result<NonTerminal, String> {
-    if let Some(TermOrNonTerm::NonTerminal(nonterm)) = elems.pop() {
-        let inner = ExprInner::Unary(UnaryExpr::new(nonterm));
+    if let Some(TermOrNonTerm::NonTerminal(NonTerminal::Multiplicative(nt_ref))) = elems.pop() {
+        let inner = ExprInner::Unary(UnaryExpr::new(nt_ref));
+        let node = ParseTreeNode::Additive(inner);
+        let nt_ref = state.add_node_mut(node);
 
-        Ok(NonTerminal::Additive(Box::new(inner)))
+        Ok(NonTerminal::Additive(nt_ref))
     } else {
         let err_msg = format!(
             "expected non-terminal at top of stack in production {} reducer.",
@@ -154,6 +148,7 @@ fn reduce_additive_unary(
 #[allow(unused)]
 fn reduce_multiplicative_binary(
     production_id: usize,
+    state: &mut State,
     elems: &mut Vec<TermOrNonTerm>,
 ) -> Result<NonTerminal, String> {
     let optional_rhs = elems.pop();
@@ -161,7 +156,7 @@ fn reduce_multiplicative_binary(
     let optional_lhs = elems.pop();
 
     // reversed due to popping elements
-    if let [Some(TermOrNonTerm::NonTerminal(lhs)), Some(TermOrNonTerm::Terminal(op)), Some(TerminalOrNonTerminal::NonTerminal(rhs))] =
+    if let [Some(TermOrNonTerm::NonTerminal(NonTerminal::Multiplicative(lhs_ref))), Some(TermOrNonTerm::Terminal(op)), Some(TerminalOrNonTerminal::NonTerminal(NonTerminal::Primary(rhs_ref)))] =
         [optional_lhs, optional_term, optional_rhs]
     {
         let non_term_kind = match op {
@@ -171,10 +166,12 @@ fn reduce_multiplicative_binary(
             _ => unreachable!(),
         };
 
-        let bin_expr = BinaryExpr::new(lhs, BinaryOperator::Slash, rhs);
+        let bin_expr = BinaryExpr::new(lhs_ref, BinaryOperator::Slash, rhs_ref);
         let inner = ExprInner::Binary(bin_expr);
+        let node = ParseTreeNode::Multiplicative(inner);
+        let nt_ref = state.add_node_mut(node);
 
-        Ok(NonTerminal::Multiplicative(Box::new(inner)))
+        Ok(NonTerminal::Multiplicative(nt_ref))
     } else {
         let err_msg = format!(
             "expected 3 elements at top of stack in production {} reducer.",
@@ -188,6 +185,7 @@ fn reduce_multiplicative_binary(
 #[allow(unused)]
 fn reduce_additive_binary(
     production_id: usize,
+    state: &mut State,
     elems: &mut Vec<TermOrNonTerm>,
 ) -> Result<NonTerminal, String> {
     let optional_rhs = elems.pop();
@@ -195,7 +193,7 @@ fn reduce_additive_binary(
     let optional_lhs = elems.pop();
 
     // reversed due to popping elements
-    if let [Some(TermOrNonTerm::NonTerminal(lhs)), Some(TermOrNonTerm::Terminal(op)), Some(TerminalOrNonTerminal::NonTerminal(rhs))] =
+    if let [Some(TermOrNonTerm::NonTerminal(NonTerminal::Additive(lhs_ref))), Some(TermOrNonTerm::Terminal(op)), Some(TerminalOrNonTerminal::NonTerminal(NonTerminal::Multiplicative(rhs_ref)))] =
         [optional_lhs, optional_term, optional_rhs]
     {
         let bin_op = match op {
@@ -205,10 +203,12 @@ fn reduce_additive_binary(
             _ => unreachable!(),
         };
 
-        let bin_expr = BinaryExpr::new(lhs, bin_op, rhs);
+        let bin_expr = BinaryExpr::new(lhs_ref, BinaryOperator::Slash, rhs_ref);
         let inner = ExprInner::Binary(bin_expr);
+        let node = ParseTreeNode::Additive(inner);
+        let nt_ref = state.add_node_mut(node);
 
-        Ok(NonTerminal::Additive(Box::new(inner)))
+        Ok(NonTerminal::Additive(nt_ref))
     } else {
         let err_msg = format!(
             "expected 3 elements at top of stack in production {} reducer.",
@@ -220,7 +220,30 @@ fn reduce_additive_binary(
 }
 
 #[allow(unused)]
-fn reduce_goal(elems: &mut Vec<TermOrNonTerm>) -> Result<NonTerminal, String> {
+fn reduce_expr_unary(
+    production_id: usize,
+    state: &mut State,
+    elems: &mut Vec<TermOrNonTerm>,
+) -> Result<NonTerminal, String> {
+    // the only top level expr is an additive expr.
+    if let Some(TermOrNonTerm::NonTerminal(NonTerminal::Additive(nt_ref))) = elems.pop() {
+        let unary_expr = UnaryExpr::new(nt_ref);
+        let inner = ExprInner::Unary(unary_expr);
+        let node = ParseTreeNode::Expr(inner);
+        let nt_ref = state.add_node_mut(node);
+        Ok(NonTerminal::Expr(nt_ref))
+    } else {
+        let err_msg = format!(
+            "expected non-terminal at top of stack in production {} reducer.",
+            production_id
+        );
+
+        Err(err_msg)
+    }
+}
+
+#[allow(unused)]
+fn reduce_goal(state: &mut State, elems: &mut Vec<TermOrNonTerm>) -> Result<NonTerminal, String> {
     if let Some(TermOrNonTerm::NonTerminal(NonTerminal::Expr(inner))) = elems.pop() {
         Ok(NonTerminal::Expr(inner))
     } else {
@@ -228,51 +251,88 @@ fn reduce_goal(elems: &mut Vec<TermOrNonTerm>) -> Result<NonTerminal, String> {
     }
 }
 
-#[derive(Debug, Lr1, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct NodeRef(usize);
+
+impl NodeRef {
+    pub fn as_usize(&self) -> usize {
+        self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct State {
+    arena: Vec<ParseTreeNode>,
+}
+
+impl State {
+    const DEFAULT_CAPACITY: usize = 64;
+}
+
+impl State {
+    fn next_nonterminal_ref(&self) -> NodeRef {
+        let idx = self.arena.len();
+
+        NodeRef(idx)
+    }
+
+    fn add_node_mut(&mut self, node: ParseTreeNode) -> NodeRef {
+        let nt_ref = self.next_nonterminal_ref();
+        self.arena.push(node);
+
+        nt_ref
+    }
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            arena: Vec::with_capacity(Self::DEFAULT_CAPACITY),
+        }
+    }
+}
+
+#[derive(Debug, Lr1, Clone, Copy, PartialEq)]
 pub enum NonTerminal {
+    #[state(State)]
     #[goal(r"<Expr>", reduce_goal)]
-    #[production(r"<Additive>", |elems| reduce_expr_unary(2, elems))]
-    Expr(Box<ExprInner>),
-    #[production(r"<Additive> Terminal::Plus <Multiplicative>", |elems| reduce_additive_binary(3, elems))]
-    #[production(r"<Additive> Terminal::Minus <Multiplicative>", |elems| reduce_additive_binary(4, elems))]
-    #[production(r"<Multiplicative>", |elems| reduce_additive_unary(5, elems))]
-    Additive(Box<ExprInner>),
-    #[production(r"<Multiplicative> Terminal::Star <Primary>", |elems| { reduce_multiplicative_binary(6, elems) })]
-    #[production(r"<Multiplicative> Terminal::Slash <Primary>", |elems| { reduce_multiplicative_binary(7, elems) })]
-    #[production(r"<Primary>", |elems| reduce_multiplicative_unary(8, elems))]
-    Multiplicative(Box<ExprInner>),
+    #[production(r"<Additive>", |state, elems| reduce_expr_unary(2, state, elems))]
+    Expr(NodeRef),
+    #[production(r"<Additive> Terminal::Plus <Multiplicative>", |state, elems| reduce_additive_binary(3, state, elems))]
+    #[production(r"<Additive> Terminal::Minus <Multiplicative>", |state, elems| reduce_additive_binary(4, state, elems))]
+    #[production(r"<Multiplicative>", |state, elems| reduce_additive_unary(5, state, elems))]
+    Additive(NodeRef),
+    #[production(r"<Multiplicative> Terminal::Star <Primary>", |state, elems| { reduce_multiplicative_binary(6, state, elems) })]
+    #[production(r"<Multiplicative> Terminal::Slash <Primary>", |state, elems| { reduce_multiplicative_binary(7, state, elems) })]
+    #[production(r"<Primary>", |state, elems| reduce_multiplicative_unary(9, state, elems))]
+    Multiplicative(NodeRef),
     #[production(r"Terminal::Int", reduce_primary)]
-    Primary(Terminal),
+    Primary(NodeRef),
 }
 
 impl NonTerminalRepresentable for NonTerminal {
     type Terminal = Terminal;
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParseTreeNode {
+    Expr(ExprInner),
+    Additive(ExprInner),
+    Multiplicative(ExprInner),
+    Primary(Terminal),
+}
+
 fn parse_basic_expression(c: &mut Criterion) {
-    let mut group = c.benchmark_group("simple calculator expression parsing (tree)");
+    let mut group = c.benchmark_group("simple calculator expression parsing (arena)");
     let input = "10 / 5 + 1";
 
-    let expected = NonTerminal::Expr(Box::new(ExprInner::Binary(BinaryExpr::new(
-        NonTerminal::Additive(Box::new(ExprInner::Unary(UnaryExpr::new(
-            NonTerminal::Multiplicative(Box::new(ExprInner::Binary(BinaryExpr::new(
-                NonTerminal::Multiplicative(Box::new(ExprInner::Unary(UnaryExpr::new(
-                    NonTerminal::Primary(Terminal::Int(10)),
-                )))),
-                BinaryOperator::Slash,
-                NonTerminal::Primary(Terminal::Int(5)),
-            )))),
-        )))),
-        BinaryOperator::Plus,
-        NonTerminal::Multiplicative(Box::new(ExprInner::Unary(UnaryExpr::new(
-            NonTerminal::Primary(Terminal::Int(1)),
-        )))),
-    ))));
-
+    let expected = NonTerminal::Expr(NodeRef(8));
     let expected = Ok(expected);
 
     group.bench_function("with tokenization", |b| {
         b.iter(|| {
+            let mut state = State::default();
+
             let tokenizer = token_stream_from_input(black_box(input))
                 .unwrap()
                 .map(|token| token.to_variant())
@@ -280,7 +340,8 @@ fn parse_basic_expression(c: &mut Criterion) {
                 // append a single eof.
                 .chain([Terminal::Eof].into_iter());
 
-            let parse_tree = LrParseable::parse_input(tokenizer);
+            let parse_tree = NonTerminal::parse_input(&mut state, tokenizer);
+
             assert_eq!(&parse_tree, &expected);
         });
     });
@@ -296,14 +357,16 @@ fn parse_basic_expression(c: &mut Criterion) {
         let token_stream = tokenizer.collect::<Vec<_>>();
 
         b.iter(|| {
-            let parse_tree = LrParseable::parse_input((&token_stream).iter().copied());
+            let mut state = State::default();
+            let parse_tree = NonTerminal::parse_input(&mut state, (&token_stream).iter().copied());
+
             assert_eq!(&parse_tree, &expected);
         });
     });
 }
 
 fn parse_large_expression(c: &mut Criterion) {
-    let mut group = c.benchmark_group("large expression (tree)");
+    let mut group = c.benchmark_group("large expression (arena)");
     let input = ["10"]
         .into_iter()
         .chain(["/ 5", "+ 1", "- 2", "* 6"].into_iter().cycle())
@@ -319,7 +382,9 @@ fn parse_large_expression(c: &mut Criterion) {
                 // append a single eof.
                 .chain([Terminal::Eof].into_iter());
 
-            let parse_tree = NonTerminal::parse_input(tokenizer);
+            let mut state = State::default();
+
+            let parse_tree = NonTerminal::parse_input(&mut state, tokenizer);
             assert!(parse_tree.is_ok());
         });
     });
@@ -335,7 +400,8 @@ fn parse_large_expression(c: &mut Criterion) {
         let token_stream = tokenizer.collect::<Vec<_>>();
 
         b.iter(|| {
-            let parse_tree = NonTerminal::parse_input((&token_stream).iter().copied());
+            let mut state = State::default();
+            let parse_tree = NonTerminal::parse_input(&mut state, (&token_stream).iter().copied());
             assert!(parse_tree.is_ok());
         });
     });

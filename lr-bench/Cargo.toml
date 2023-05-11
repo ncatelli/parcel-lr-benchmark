@@ -8,6 +8,10 @@ workspace = ".."
 criterion = "0.4"
 
 [[bench]]
+name = "lr_calculator_expr_arena"
+harness = false
+
+[[bench]]
 name = "lr_calculator_expr_tree"
 harness = false
 
