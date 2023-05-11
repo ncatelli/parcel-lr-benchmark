@@ -250,7 +250,7 @@ impl NonTerminalRepresentable for NonTerminal {
 }
 
 fn parse_basic_expression(c: &mut Criterion) {
-    let mut group = c.benchmark_group("simple calculator expression parsing");
+    let mut group = c.benchmark_group("simple calculator expression parsing (tree)");
     let input = "10 / 5 + 1";
 
     let expected = NonTerminal::Expr(Box::new(ExprInner::Binary(BinaryExpr::new(
@@ -303,7 +303,7 @@ fn parse_basic_expression(c: &mut Criterion) {
 }
 
 fn parse_large_expression(c: &mut Criterion) {
-    let mut group = c.benchmark_group("large expression");
+    let mut group = c.benchmark_group("large expression (tree)");
     let input = ["10"]
         .into_iter()
         .chain(["/ 5", "+ 1", "- 2", "* 6"].into_iter().cycle())

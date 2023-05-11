@@ -56,24 +56,24 @@ pub enum BinaryOperator {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BinaryExpr {
-    pub lhs: NonTerminalRef,
+    pub lhs: NodeRef,
     pub operator: BinaryOperator,
-    pub rhs: NonTerminalRef,
+    pub rhs: NodeRef,
 }
 
 impl BinaryExpr {
-    pub fn new(lhs: NonTerminalRef, operator: BinaryOperator, rhs: NonTerminalRef) -> Self {
+    pub fn new(lhs: NodeRef, operator: BinaryOperator, rhs: NodeRef) -> Self {
         Self { lhs, operator, rhs }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnaryExpr {
-    pub lhs: NonTerminalRef,
+    pub lhs: NodeRef,
 }
 
 impl UnaryExpr {
-    pub fn new(lhs: NonTerminalRef) -> Self {
+    pub fn new(lhs: NodeRef) -> Self {
         Self { lhs }
     }
 }
@@ -252,9 +252,9 @@ fn reduce_goal(state: &mut State, elems: &mut Vec<TermOrNonTerm>) -> Result<NonT
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct NonTerminalRef(usize);
+pub struct NodeRef(usize);
 
-impl NonTerminalRef {
+impl NodeRef {
     pub fn as_usize(&self) -> usize {
         self.0
     }
@@ -270,13 +270,13 @@ impl State {
 }
 
 impl State {
-    fn next_nonterminal_ref(&self) -> NonTerminalRef {
+    fn next_nonterminal_ref(&self) -> NodeRef {
         let idx = self.arena.len();
 
-        NonTerminalRef(idx)
+        NodeRef(idx)
     }
 
-    fn add_node_mut(&mut self, node: ParseTreeNode) -> NonTerminalRef {
+    fn add_node_mut(&mut self, node: ParseTreeNode) -> NodeRef {
         let nt_ref = self.next_nonterminal_ref();
         self.arena.push(node);
 
@@ -297,17 +297,17 @@ pub enum NonTerminal {
     #[state(State)]
     #[goal(r"<Expr>", reduce_goal)]
     #[production(r"<Additive>", |state, elems| reduce_expr_unary(2, state, elems))]
-    Expr(NonTerminalRef),
+    Expr(NodeRef),
     #[production(r"<Additive> Terminal::Plus <Multiplicative>", |state, elems| reduce_additive_binary(3, state, elems))]
     #[production(r"<Additive> Terminal::Minus <Multiplicative>", |state, elems| reduce_additive_binary(4, state, elems))]
     #[production(r"<Multiplicative>", |state, elems| reduce_additive_unary(5, state, elems))]
-    Additive(NonTerminalRef),
+    Additive(NodeRef),
     #[production(r"<Multiplicative> Terminal::Star <Primary>", |state, elems| { reduce_multiplicative_binary(6, state, elems) })]
     #[production(r"<Multiplicative> Terminal::Slash <Primary>", |state, elems| { reduce_multiplicative_binary(7, state, elems) })]
     #[production(r"<Primary>", |state, elems| reduce_multiplicative_unary(9, state, elems))]
-    Multiplicative(NonTerminalRef),
+    Multiplicative(NodeRef),
     #[production(r"Terminal::Int", reduce_primary)]
-    Primary(NonTerminalRef),
+    Primary(NodeRef),
 }
 
 impl NonTerminalRepresentable for NonTerminal {
@@ -323,27 +323,11 @@ pub enum ParseTreeNode {
 }
 
 fn parse_basic_expression(c: &mut Criterion) {
-    let mut group = c.benchmark_group("simple calculator expression parsing");
+    let mut group = c.benchmark_group("simple calculator expression parsing (arena)");
     let input = "10 / 5 + 1";
 
-    /*let expected = NonTerminal::Expr(Box::new(ExprInner::Binary(BinaryExpr::new(
-        NonTerminal::Additive(Box::new(ExprInner::Unary(UnaryExpr::new(
-            NonTerminal::Multiplicative(Box::new(ExprInner::Binary(BinaryExpr::new(
-                NonTerminal::Multiplicative(Box::new(ExprInner::Unary(UnaryExpr::new(
-                    NonTerminal::Primary(Terminal::Int(10)),
-                )))),
-                BinaryOperator::Slash,
-                NonTerminal::Primary(Terminal::Int(5)),
-            )))),
-        )))),
-        BinaryOperator::Plus,
-        NonTerminal::Multiplicative(Box::new(ExprInner::Unary(UnaryExpr::new(
-            NonTerminal::Primary(Terminal::Int(1)),
-        )))),
-    ))));
-
+    let expected = NonTerminal::Expr(NodeRef(8));
     let expected = Ok(expected);
-    */
 
     group.bench_function("with tokenization", |b| {
         b.iter(|| {
@@ -358,8 +342,7 @@ fn parse_basic_expression(c: &mut Criterion) {
 
             let parse_tree = NonTerminal::parse_input(&mut state, tokenizer);
 
-            assert!(parse_tree.is_ok())
-            //assert_eq!(&parse_tree, &expected);
+            assert_eq!(&parse_tree, &expected);
         });
     });
 
@@ -377,14 +360,13 @@ fn parse_basic_expression(c: &mut Criterion) {
             let mut state = State::default();
             let parse_tree = NonTerminal::parse_input(&mut state, (&token_stream).iter().copied());
 
-            assert!(parse_tree.is_ok())
-            //assert_eq!(&parse_tree, &expected);
+            assert_eq!(&parse_tree, &expected);
         });
     });
 }
 
 fn parse_large_expression(c: &mut Criterion) {
-    let mut group = c.benchmark_group("large expression");
+    let mut group = c.benchmark_group("large expression (arena)");
     let input = ["10"]
         .into_iter()
         .chain(["/ 5", "+ 1", "- 2", "* 6"].into_iter().cycle())
